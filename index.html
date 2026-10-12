@@ -69,6 +69,14 @@
         .star-gold { color: #eab308; filter: drop-shadow(0 2px 4px rgba(234, 179, 8, 0.4)); }
         .star-silver { color: #94a3b8; filter: drop-shadow(0 2px 4px rgba(148, 163, 184, 0.4)); }
         .star-bronze { color: #d97706; filter: drop-shadow(0 2px 4px rgba(217, 119, 6, 0.4)); }
+        
+        @keyframes pulseGlow {
+            0%, 100% { box-shadow: 0 0 15px rgba(16, 185, 129, 0.5); }
+            50% { box-shadow: 0 0 25px rgba(16, 185, 129, 0.9); }
+        }
+        .active-prayer-glow {
+            animation: pulseGlow 2s infinite ease-in-out;
+        }
     </style>
 </head>
 <body class="min-h-screen flex items-center justify-center p-0 sm:p-4 overflow-x-hidden antialiased">
@@ -120,6 +128,7 @@
         <!-- Content Area -->
         <main id="main-content" class="flex-1 overflow-y-auto islamic-pattern pb-20 no-scrollbar">
             
+            <!-- TAB UTAMA -->
             <div id="tab-home" class="tab-pane p-4 space-y-4">
                 
                 <!-- Navigasi Tarikh / Slide Hari -->
@@ -164,6 +173,7 @@
 
             </div>
 
+            <!-- TAB SEJARAH -->
             <div id="tab-history" class="tab-pane p-4 space-y-4 hidden">
                 <div class="flex justify-between items-center">
                     <div>
@@ -172,7 +182,7 @@
                     </div>
                 </div>
 
-                <!-- Legend Bintang -->
+                <!-- Panduan Pingat Bintang -->
                 <div class="bg-white/90 backdrop-blur rounded-2xl p-3.5 shadow-sm border border-emerald-100 text-xs space-y-1.5">
                     <span class="font-bold text-solat-900 block border-b border-slate-100 pb-1 mb-1">Panduan Pingat Bintang (Ditentu Selepas Hari Tamat):</span>
                     <div class="grid grid-cols-1 gap-1.5 text-[11px]">
@@ -229,6 +239,7 @@
 
             </div>
 
+            <!-- TAB QADHA -->
             <div id="tab-missed" class="tab-pane p-4 space-y-4 hidden">
                 <div class="flex justify-between items-center">
                     <div>
@@ -256,8 +267,23 @@
                 </div>
             </div>
 
+            <!-- TAB TETAPAN -->
             <div id="tab-settings" class="tab-pane p-4 space-y-4 hidden">
                 <h2 class="font-bold text-solat-900 text-base">Tetapan Aplikasi</h2>
+
+                <!-- Seksyen Sunting Tetapan Waktu Solat -->
+                <div class="bg-white rounded-2xl shadow-sm border border-emerald-100 p-4 space-y-3">
+                    <h3 class="font-bold text-solat-900 text-xs flex items-center gap-2">
+                        <i class="fa-solid fa-clock text-solat-gold"></i> Tetapan Masa Waktu Solat
+                    </h3>
+                    <p class="text-[10px] text-slate-500">Tetapkan selang masa waktu solat untuk pengesahan automatik.</p>
+                    <div id="settings-time-form" class="space-y-2 text-xs">
+                        <!-- Disuntik secara dinamik oleh renderTimeSettings() -->
+                    </div>
+                    <button onclick="saveTimeSettings()" class="w-full bg-solat-600 hover:bg-solat-700 text-white font-bold text-xs py-2 rounded-xl shadow transition">
+                        Simpan Masa Solat
+                    </button>
+                </div>
 
                 <div class="bg-white rounded-2xl shadow-sm border border-emerald-100 divide-y divide-slate-100 overflow-hidden">
                     <div class="p-4 flex items-center justify-between">
@@ -298,8 +324,8 @@
                     <div class="w-10 h-10 rounded-full bg-emerald-50 text-solat-700 flex items-center justify-center mx-auto mb-2 font-bold">
                         <i class="fa-solid fa-heart"></i>
                     </div>
-                    <p class="text-xs font-bold text-solat-900">Solat Journal PWA v5.3</p>
-                    <p class="text-[10px] text-slate-500">PWA Ready & Rekod Auto-Qadha</p>
+                    <p class="text-xs font-bold text-solat-900">Solat Journal PWA v5.5</p>
+                    <p class="text-[10px] text-slate-500">Auto-Qadha, Adjustable Prayer Times & Star Tracking</p>
                 </div>
             </div>
 
@@ -403,21 +429,20 @@
     </div>
 
     <script>
-        // Waktu Solat (Format 24 Jam)
-        const PRAYER_WINDOWS = [
+        // Standard Waktu Solat (Format 24 Jam) - Isyak kini tamat jam 23:59
+        let PRAYER_WINDOWS = [
             { id: 'subuh', name: 'Subuh', start: '05:00', end: '07:00', icon: 'fa-sun' },
             { id: 'zohor', name: 'Zohor', start: '13:00', end: '16:15', icon: 'fa-sun' },
             { id: 'asar', name: 'Asar', start: '16:16', end: '19:10', icon: 'fa-cloud-sun' },
             { id: 'maghrib', name: 'Maghrib', start: '19:11', end: '20:15', icon: 'fa-moon' },
-            { id: 'isyak', name: 'Isyak', start: '20:16', end: '04:59', icon: 'fa-moon' }
+            { id: 'isyak', name: 'Isyak', start: '20:16', end: '23:59', icon: 'fa-moon' }
         ];
 
-        // State Data App
+        // State Utama Aplikasi
         let appData = {
-            lastOpenDate: '',
-            dailyRecords: {}, // Structure: { 'YYYY-MM-DD': [prayers] }
+            dailyRecords: {},
             qadhaList: [],
-            history: []
+            customWindows: null
         };
 
         let selectedHomeDate = '';
@@ -425,88 +450,61 @@
         let deferredPrompt = null;
         let activeEditIndex = null;
 
-        // --- SOKONGAN SEBENAR PWA MANIFEST & SERVICE WORKER ---
-        function initializePWAManifest() {
-            const manifestObj = {
-                name: "Solat Journal PWA",
-                short_name: "SolatJournal",
-                description: "Aplikasi Jurnal Solat & Auto-Qadha",
-                start_url: window.location.href,
-                display: "standalone",
-                background_color: "#061e17",
-                theme_color: "#064e3b",
-                icons: [
-                    {
-                        src: "https://cdn-icons-png.flaticon.com/512/2972/2972531.png",
-                        sizes: "192x192",
-                        type: "image/png"
-                    },
-                    {
-                        src: "https://cdn-icons-png.flaticon.com/512/2972/2972531.png",
-                        sizes: "512x512",
-                        type: "image/png"
+        function loadAppData() {
+            try {
+                const saved = localStorage.getItem('solat_journal_app_data');
+                if (saved) {
+                    appData = JSON.parse(saved);
+                    if (appData.customWindows) {
+                        PRAYER_WINDOWS = appData.customWindows;
                     }
-                ]
-            };
-            const stringManifest = JSON.stringify(manifestObj);
-            const blob = new Blob([stringManifest], { type: 'application/json' });
-            const manifestURL = URL.createObjectURL(blob);
-            document.getElementById('pwa-manifest-link').setAttribute('href', manifestURL);
-
-            // Register Service Worker via Blob for standalone PWA support
-            if ('serviceWorker' in navigator) {
-                const swCode = `
-                    self.addEventListener('install', (e) => self.skipWaiting());
-                    self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
-                    self.addEventListener('fetch', (e) => e.respondWith(fetch(e.request).catch(() => caches.match(e.request))));
-                `;
-                const swBlob = new Blob([swCode], { type: 'text/javascript' });
-                const swUrl = URL.createObjectURL(swBlob);
-                navigator.serviceWorker.register(swUrl).catch(err => console.log('SW Note:', err));
-            }
-        }
-
-        function setupPWA() {
-            initializePWAManifest();
-
-            window.addEventListener('beforeinstallprompt', (e) => {
-                e.preventDefault();
-                deferredPrompt = e;
-                const pwaBtn = document.getElementById('pwa-install-btn');
-                if (pwaBtn) {
-                    pwaBtn.classList.remove('hidden');
-                    pwaBtn.classList.add('animate-bounce');
                 }
-            });
-
-            window.addEventListener('appinstalled', () => {
-                deferredPrompt = null;
-                showToast('Aplikasi Solat Journal berjaya dipasang!');
-            });
+            } catch (e) {
+                console.error('Gagal memuatkan data:', e);
+            }
+            if (!appData.dailyRecords) appData.dailyRecords = {};
+            if (!appData.qadhaList) appData.qadhaList = [];
+            selectedHomeDate = getIslamicTodayString();
         }
 
-        function installPWA() {
-            if (deferredPrompt) {
-                deferredPrompt.prompt();
-                deferredPrompt.userChoice.then((choiceResult) => {
-                    if (choiceResult.outcome === 'accepted') {
-                        showToast('PWA Berjaya Dipasang!');
-                    }
-                    deferredPrompt = null;
-                });
-            } else {
-                openPWAHelpModal();
+        function saveAppData() {
+            try {
+                appData.customWindows = PRAYER_WINDOWS;
+                localStorage.setItem('solat_journal_app_data', JSON.stringify(appData));
+            } catch (e) {
+                console.error('Gagal menyimpan data:', e);
             }
         }
 
-        function openPWAHelpModal() {
-            document.getElementById('pwa-help-modal').classList.remove('hidden');
+        function generateDefaultPrayers(dateStr) {
+            return PRAYER_WINDOWS.map(p => ({
+                id: p.id,
+                name: p.name,
+                start: p.start,
+                end: p.end,
+                icon: p.icon,
+                status: 'pending'
+            }));
         }
 
-        function closePWAHelpModal() {
-            document.getElementById('pwa-help-modal').classList.add('hidden');
+        function setupRealTimeDate() {
+            function updateClock() {
+                const now = new Date();
+                const timeStr = now.toLocaleTimeString('ms-MY', { hour12: false });
+                const liveTimeEl = document.getElementById('live-time-display');
+                if (liveTimeEl) liveTimeEl.innerText = timeStr;
+
+                const headerDateEl = document.getElementById('current-date-header');
+                if (headerDateEl) {
+                    const dateOptions = { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' };
+                    headerDateEl.innerText = 'Hari Ini: ' + now.toLocaleDateString('ms-MY', dateOptions);
+                }
+            }
+            updateClock();
+            setInterval(updateClock, 1000);
         }
 
+        // Mendapatkan Tarikh Kitaran Islamik (Hari Baru bermula 05:00 AM)
         function getIslamicTodayString(now = new Date()) {
             const h = now.getHours();
             const targetDate = new Date(now);
@@ -524,59 +522,6 @@
             return h * 60 + m;
         }
 
-        function getZohorNameForToday(dateStr) {
-            const dateObj = new Date(dateStr);
-            return dateObj.getDay() === 5 ? 'Jumaat' : 'Zohor';
-        }
-
-        function generateDefaultPrayers(dateStr) {
-            return PRAYER_WINDOWS.map(p => {
-                let name = p.name;
-                if (p.id === 'zohor') {
-                    name = getZohorNameForToday(dateStr);
-                }
-                return {
-                    id: p.id,
-                    name: name,
-                    start: p.start,
-                    end: p.end,
-                    status: 'pending',
-                    completedAt: null,
-                    icon: p.icon
-                };
-            });
-        }
-
-        function loadAppData() {
-            const saved = localStorage.getItem('solat_journal_v5_data');
-            const currentIslamicToday = getIslamicTodayString();
-
-            if (saved) {
-                try {
-                    appData = JSON.parse(saved);
-                } catch (e) {
-                    console.error('Data error:', e);
-                }
-            }
-
-            if (!appData.dailyRecords) appData.dailyRecords = {};
-            if (!appData.qadhaList) appData.qadhaList = [];
-            if (!appData.history) appData.history = [];
-
-            if (!appData.dailyRecords[currentIslamicToday]) {
-                appData.dailyRecords[currentIslamicToday] = generateDefaultPrayers(currentIslamicToday);
-            }
-
-            appData.lastOpenDate = currentIslamicToday;
-            selectedHomeDate = currentIslamicToday;
-
-            saveAppData();
-        }
-
-        function saveAppData() {
-            localStorage.setItem('solat_journal_v5_data', JSON.stringify(appData));
-        }
-
         function checkRealtimePrayerStatus(isManualClick = false) {
             const now = new Date();
             const currentMins = now.getHours() * 60 + now.getMinutes();
@@ -591,21 +536,11 @@
 
             todayPrayers.forEach(p => {
                 if (p.status === 'pending') {
-                    const startMins = getTimeInMinutes(p.start);
-                    let endMins = getTimeInMinutes(p.end);
-                    let isTimePassed = false;
+                    // Ambil waktu terkini dari PRAYER_WINDOWS
+                    const config = PRAYER_WINDOWS.find(w => w.id === p.id) || p;
+                    const endMins = getTimeInMinutes(config.end);
 
-                    if (p.id === 'isyak') {
-                        if (currentMins >= getTimeInMinutes('05:00') && currentMins < startMins) {
-                            isTimePassed = true;
-                        }
-                    } else {
-                        if (currentMins > endMins) {
-                            isTimePassed = true;
-                        }
-                    }
-
-                    if (isTimePassed) {
+                    if (currentMins > endMins) {
                         p.status = 'auto_missed';
                         
                         const existsInQadha = appData.qadhaList.some(q => q.prayerId === p.id && q.date === todayStr);
@@ -634,131 +569,15 @@
                 showToast('Masa solat dalam keadaan terkini.');
             }
 
-            updateDayHistoryRecord(todayStr);
             saveAppData();
             renderPrayers();
             renderFullQadhaList();
             renderHistoryCalendar();
         }
 
-        function navigateHomeDate(offset) {
-            const [y, m, d] = selectedHomeDate.split('-').map(Number);
-            const dateObj = new Date(y, m - 1, d);
-            dateObj.setDate(dateObj.getDate() + offset);
-
-            const ny = dateObj.getFullYear();
-            const nm = String(dateObj.getMonth() + 1).padStart(2, '0');
-            const nd = String(dateObj.getDate()).padStart(2, '0');
-            const newDateStr = `${ny}-${nm}-${nd}`;
-
-            const islamicToday = getIslamicTodayString();
-            
-            if (newDateStr > islamicToday) {
-                showToast('Tidak boleh menanda solat tarikh akan datang.');
-                return;
-            }
-
-            selectedHomeDate = newDateStr;
-            
-            if (!appData.dailyRecords[selectedHomeDate]) {
-                appData.dailyRecords[selectedHomeDate] = generateDefaultPrayers(selectedHomeDate);
-            }
-
-            renderPrayers();
-        }
-
-        function calculateDayStarBadge(dateStr) {
-            const islamicToday = getIslamicTodayString();
-            
-            if (dateStr >= islamicToday) {
-                return { type: 'pending', label: 'Proses (Belum Tamat)', icon: 'fa-hourglass-half text-amber-300' };
-            }
-
-            const prayers = appData.dailyRecords[dateStr] || [];
-            if (prayers.length === 0) {
-                return { type: 'none', label: 'Tiada Rekod', icon: 'fa-star text-slate-300' };
-            }
-
-            const completedOnTime = prayers.filter(p => p.status === 'completed').length;
-            const qadhaAwalCount = prayers.filter(p => p.status === 'qadha_same_day').length;
-            const qadhaLewatCount = prayers.filter(p => p.status === 'qadha_late' || p.status === 'auto_missed').length;
-
-            if (completedOnTime === 5) {
-                return { type: 'gold', label: 'Emas (5/5 Tunai)', icon: 'fa-star star-gold' };
-            } else if (completedOnTime + qadhaAwalCount === 5) {
-                return { type: 'silver', label: 'Perak (Ada Qada Awal)', icon: 'fa-star star-silver' };
-            } else if (completedOnTime + qadhaAwalCount + qadhaLewatCount > 0) {
-                return { type: 'bronze', label: 'Gangsa (Ada Qada Lewat)', icon: 'fa-star star-bronze' };
-            }
-
-            return { type: 'none', label: 'Tiada Rekod', icon: 'fa-star text-slate-300' };
-        }
-
-        function updateDayHistoryRecord(dateStr) {
-            const prayers = appData.dailyRecords[dateStr] || [];
-            const completedOnTime = prayers.filter(p => p.status === 'completed').length;
-            const badge = calculateDayStarBadge(dateStr);
-
-            let existingHistory = appData.history.find(h => h.date === dateStr);
-            const historyEntry = {
-                date: dateStr,
-                summary: `${completedOnTime} / 5 Tunai`,
-                badge: badge
-            };
-
-            if (existingHistory) {
-                Object.assign(existingHistory, historyEntry);
-            } else {
-                appData.history.unshift(historyEntry);
-            }
-        }
-
-        function markPrayer(index, status) {
-            if (!appData.dailyRecords[selectedHomeDate]) {
-                appData.dailyRecords[selectedHomeDate] = generateDefaultPrayers(selectedHomeDate);
-            }
-            
-            const prayer = appData.dailyRecords[selectedHomeDate][index];
-            prayer.status = status;
-            prayer.completedAt = status !== 'pending' ? new Date().toLocaleTimeString() : null;
-
-            updateDayHistoryRecord(selectedHomeDate);
-            saveAppData();
-            renderPrayers();
-            renderHistoryCalendar();
-
-            const statusTextMap = {
-                'completed': 'Solat Tunai',
-                'qadha_same_day': 'Qada Awal',
-                'qadha_late': 'Qada Lewat',
-                'pending': 'Belum Selesai'
-            };
-            showToast(`Status ${prayer.name} dikemaskini: ${statusTextMap[status] || status}`);
-        }
-
-        function openStatusOptionModal(index) {
-            activeEditIndex = index;
-            const currentPrayers = appData.dailyRecords[selectedHomeDate];
-            if (currentPrayers && currentPrayers[index]) {
-                document.getElementById('status-modal-title').innerText = `Kemaskini ${currentPrayers[index].name}`;
-            }
-            document.getElementById('status-option-modal').classList.remove('hidden');
-        }
-
-        function closeStatusOptionModal() {
-            document.getElementById('status-option-modal').classList.add('hidden');
-            activeEditIndex = null;
-        }
-
-        function applyManualStatus(status) {
-            if (activeEditIndex !== null) {
-                markPrayer(activeEditIndex, status);
-                closeStatusOptionModal();
-            }
-        }
-
         function renderPrayers() {
             const container = document.getElementById('prayer-cards-container');
+            if (!container) return;
             container.innerHTML = '';
 
             const now = new Date();
@@ -792,25 +611,20 @@
             let completedCount = 0;
 
             currentPrayers.forEach((prayer, index) => {
-                const startMins = getTimeInMinutes(prayer.start);
-                let endMins = getTimeInMinutes(prayer.end);
+                const config = PRAYER_WINDOWS.find(w => w.id === prayer.id) || prayer;
+                const startMins = getTimeInMinutes(config.start);
+                const endMins = getTimeInMinutes(config.end);
 
                 let isCurrentActiveWindow = false;
                 if (isViewingToday) {
-                    if (prayer.id === 'isyak') {
-                        if (currentMins >= startMins || currentMins <= endMins) {
-                            isCurrentActiveWindow = true;
-                        }
-                    } else {
-                        if (currentMins >= startMins && currentMins <= endMins) {
-                            isCurrentActiveWindow = true;
-                        }
+                    if (currentMins >= startMins && currentMins <= endMins) {
+                        isCurrentActiveWindow = true;
                     }
                 }
 
                 let bgClass = 'bg-white border-slate-200 text-slate-800 shadow-sm';
                 let btnHtml = '';
-                let statusBadge = `<span class="text-[10px] font-bold text-slate-400">${prayer.start} - ${prayer.end}</span>`;
+                let statusBadge = '';
 
                 if (prayer.status === 'completed') {
                     completedCount++;
@@ -831,9 +645,9 @@
                     btnHtml = `<button onclick="markPrayer(${index}, 'qadha_same_day')" class="relative z-20 bg-rose-600 text-white font-bold text-xs px-3 py-1.5 rounded-xl shadow hover:bg-rose-700 transition active:scale-95 whitespace-nowrap">Tanda Qada</button>`;
                 } else {
                     if (isCurrentActiveWindow) {
-                        bgClass = 'bg-emerald-50 border-solat-500 ring-2 ring-solat-500/30 text-solat-900 shadow';
+                        bgClass = 'bg-emerald-50 border-solat-500 ring-2 ring-solat-500/40 text-solat-900 active-prayer-glow';
                         statusBadge = `<span class="text-[10px] font-extrabold text-solat-700 animate-pulse">● Waktu Sekarang</span>`;
-                        btnHtml = `<button onclick="markPrayer(${index}, 'completed')" class="relative z-20 bg-solat-600 text-white font-bold text-xs px-3.5 py-1.5 rounded-xl shadow hover:bg-solat-700 transition active:scale-95 whitespace-nowrap">Tanda Solat Tunai</button>`;
+                        btnHtml = `<button onclick="markPrayer(${index}, 'completed')" class="relative z-20 bg-solat-600 text-white font-bold text-xs px-3.5 py-1.5 rounded-xl shadow hover:bg-solat-700 transition active:scale-95 whitespace-nowrap border border-solat-400">Tanda Solat Tunai</button>`;
                     } else {
                         btnHtml = `<button onclick="markPrayer(${index}, 'completed')" class="relative z-20 bg-solat-600 text-white font-bold text-xs px-3.5 py-1.5 rounded-xl shadow hover:bg-solat-700 transition active:scale-95 whitespace-nowrap">Tanda Solat</button>`;
                     }
@@ -848,11 +662,10 @@
                             <i class="fa-solid ${prayer.icon}"></i>
                         </div>
                         <div>
-                            <div class="flex items-center space-x-1.5 mb-0.5">
+                            <div class="flex items-center space-x-1.5">
                                 <h4 class="font-extrabold text-xs sm:text-sm">${prayer.name}</h4>
                                 ${statusBadge}
                             </div>
-                            <p class="text-[10px] opacity-80 font-semibold">${prayer.start} - ${prayer.end}</p>
                         </div>
                     </div>
 
@@ -874,68 +687,152 @@
             document.getElementById('today-star-badge').innerHTML = `<i class="fa-solid ${badge.icon}"></i> <span>${badge.label}</span>`;
         }
 
+        function markPrayer(index, status) {
+            if (!appData.dailyRecords[selectedHomeDate]) return;
+            appData.dailyRecords[selectedHomeDate][index].status = status;
+            saveAppData();
+            renderPrayers();
+            renderHistoryCalendar();
+            showToast('Status solat telah dikemaskini.');
+        }
+
+        function openStatusOptionModal(index) {
+            activeEditIndex = index;
+            const modal = document.getElementById('status-option-modal');
+            if (modal) modal.classList.remove('hidden');
+        }
+
+        function closeStatusOptionModal() {
+            const modal = document.getElementById('status-option-modal');
+            if (modal) modal.classList.add('hidden');
+            activeEditIndex = null;
+        }
+
+        function applyManualStatus(status) {
+            if (activeEditIndex !== null) {
+                markPrayer(activeEditIndex, status);
+                closeStatusOptionModal();
+            }
+        }
+
+        function navigateHomeDate(offset) {
+            const d = new Date(selectedHomeDate);
+            d.setDate(d.getDate() + offset);
+            
+            const todayStr = getIslamicTodayString();
+            if (d > new Date(todayStr)) return;
+
+            const year = d.getFullYear();
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            selectedHomeDate = `${year}-${month}-${day}`;
+            
+            renderPrayers();
+        }
+
+        function calculateDayStarBadge(dateStr) {
+            const todayStr = getIslamicTodayString();
+            if (dateStr >= todayStr) {
+                return { star: null, icon: 'fa-hourglass-half', label: 'Dalam Proses' };
+            }
+
+            const prayers = appData.dailyRecords[dateStr];
+            // If no record exists or no prayers were marked/saved at all, return empty (no star awarded)
+            if (!prayers || prayers.length < 5) {
+                return { star: null, icon: '', label: 'Tiada Rekod' };
+            }
+
+            let completed = 0;
+            let sameDayQadha = 0;
+            let lateQadha = 0;
+            let pendingCount = 0;
+
+            prayers.forEach(p => {
+                if (p.status === 'completed') completed++;
+                else if (p.status === 'qadha_same_day') sameDayQadha++;
+                else if (p.status === 'qadha_late') lateQadha++;
+                else pendingCount++;
+            });
+
+            // If all 5 prayers are still pending or untouched, do not assign a star
+            if (pendingCount === 5) {
+                return { star: null, icon: '', label: 'Tiada Rekod' };
+            }
+
+            if (completed === 5) {
+                return { star: 'gold', icon: 'fa-star star-gold', label: 'Emas (5/5 Tunai)' };
+            } else if ((completed + sameDayQadha) === 5) {
+                return { star: 'silver', icon: 'fa-star star-silver', label: 'Perak (Qada Awal)' };
+            } else {
+                return { star: 'bronze', icon: 'fa-star star-bronze', label: 'Gangsa (Ada Qada Lewat)' };
+            }
+        }
+
         function renderHistoryCalendar() {
             const grid = document.getElementById('calendar-grid');
-            const title = document.getElementById('calendar-month-year-title');
-            if (!grid || !title) return;
-
+            if (!grid) return;
             grid.innerHTML = '';
 
             const year = currentCalendarDate.getFullYear();
             const month = currentCalendarDate.getMonth();
 
-            const monthNames = [
-                'Januari', 'Februari', 'Mac', 'April', 'Mei', 'Jun',
-                'Julai', 'Ogos', 'September', 'Oktober', 'November', 'Disember'
-            ];
+            const monthNames = ["Januari", "Februari", "Mac", "April", "Mei", "Jun", "Julai", "Ogos", "September", "Oktober", "November", "Disember"];
+            document.getElementById('calendar-month-year-title').innerText = `${monthNames[month]} ${year}`;
 
-            title.innerText = `${monthNames[month]} ${year}`;
+            const firstDay = new Date(year, month, 1).getDay();
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
 
-            const firstDayIndex = new Date(year, month, 1).getDay();
-            const totalDaysInMonth = new Date(year, month + 1, 0).getDate();
-            const islamicToday = getIslamicTodayString();
+            let goldCount = 0, silverCount = 0, bronzeCount = 0;
 
-            for (let i = 0; i < firstDayIndex; i++) {
-                const emptyCell = document.createElement('div');
-                emptyCell.className = 'p-2 rounded-xl bg-slate-50/50 opacity-20';
-                grid.appendChild(emptyCell);
+            for (let i = 0; i < firstDay; i++) {
+                grid.appendChild(document.createElement('div'));
             }
 
-            for (let day = 1; day <= totalDaysInMonth; day++) {
-                const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                const badge = calculateDayStarBadge(dateStr);
-
+            for (let day = 1; day <= daysInMonth; day++) {
+                const dayStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
                 const cell = document.createElement('div');
-                const isToday = dateStr === islamicToday;
+                cell.className = 'p-2 bg-slate-50 hover:bg-emerald-100/50 border border-slate-100 rounded-xl flex flex-col items-center justify-center space-y-1 min-h-[48px] cursor-pointer transition active:scale-95';
 
-                cell.className = `p-1.5 rounded-xl border flex flex-col items-center justify-between min-h-[46px] cursor-pointer transition active:scale-95 ${
-                    isToday ? 'border-solat-600 bg-emerald-50 shadow-sm ring-1 ring-solat-500' : 'border-slate-100 bg-slate-50/60 hover:bg-emerald-50/50'
-                }`;
-
-                cell.onclick = () => {
-                    selectedHomeDate = dateStr;
-                    switchTab('home');
-                    renderPrayers();
+                // Click event to navigate directly to selected date in Home Tab
+                cell.onclick = function() {
+                    jumpToHomeDate(dayStr);
                 };
 
-                let starIconHtml = `<span class="h-3"></span>`;
-                if (badge.type === 'gold') {
-                    starIconHtml = `<i class="fa-solid fa-star star-gold text-xs mt-0.5"></i>`;
-                } else if (badge.type === 'silver') {
-                    starIconHtml = `<i class="fa-solid fa-star star-silver text-xs mt-0.5"></i>`;
-                } else if (badge.type === 'bronze') {
-                    starIconHtml = `<i class="fa-solid fa-star star-bronze text-xs mt-0.5"></i>`;
-                }
+                const dayNum = document.createElement('span');
+                dayNum.className = 'text-[11px] font-bold text-slate-700';
+                dayNum.innerText = day;
+                cell.appendChild(dayNum);
 
-                cell.innerHTML = `
-                    <span class="${isToday ? 'text-solat-800 font-extrabold' : 'text-slate-700 font-semibold'} text-xs">${day}</span>
-                    ${starIconHtml}
-                `;
+                const badge = calculateDayStarBadge(dayStr);
+                if (badge.star === 'gold') {
+                    goldCount++;
+                    cell.innerHTML += `<i class="fa-solid fa-star star-gold text-xs"></i>`;
+                } else if (badge.star === 'silver') {
+                    silverCount++;
+                    cell.innerHTML += `<i class="fa-solid fa-star star-silver text-xs"></i>`;
+                } else if (badge.star === 'bronze') {
+                    bronzeCount++;
+                    cell.innerHTML += `<i class="fa-solid fa-star star-bronze text-xs"></i>`;
+                }
 
                 grid.appendChild(cell);
             }
 
-            updateQadhaStats();
+            document.getElementById('stat-gold').innerText = goldCount;
+            document.getElementById('stat-silver').innerText = silverCount;
+            document.getElementById('stat-bronze').innerText = bronzeCount;
+        }
+
+        // Jump directly to a date in the Home tab
+        function jumpToHomeDate(dateStr) {
+            const todayStr = getIslamicTodayString();
+            if (dateStr > todayStr) {
+                showToast("Tidak boleh menanda tarikh akan datang.");
+                return;
+            }
+            selectedHomeDate = dateStr;
+            switchTab('home');
+            renderPrayers();
         }
 
         function changeCalendarMonth(offset) {
@@ -948,182 +845,214 @@
             if (!container) return;
             container.innerHTML = '';
 
+            const completedCount = appData.qadhaList.filter(q => q.status === 'completed').length;
+            const totalCount = appData.qadhaList.length;
+            const percentage = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 100;
+
+            document.getElementById('qadha-percentage').innerText = `${percentage}% Selesai`;
+            document.getElementById('qadha-progress-bar').style.width = `${percentage}%`;
+
             if (appData.qadhaList.length === 0) {
-                container.innerHTML = `<div class="bg-white rounded-2xl p-6 text-center border border-emerald-100"><p class="text-xs text-slate-400">Belum ada rekod Qadha. Solat yang terlepas secara automatik akan dimasukkan ke sini.</p></div>`;
-                updateQadhaStats();
+                container.innerHTML = `
+                    <div class="bg-white rounded-2xl p-6 text-center border border-emerald-100">
+                        <i class="fa-solid fa-circle-check text-solat-500 text-3xl mb-2"></i>
+                        <h4 class="font-bold text-solat-900 text-sm">Tiada Solat Tertunggak</h4>
+                        <p class="text-xs text-slate-500 mt-1">Alhamdulillah, semua rekod solat diuruskan dengan baik.</p>
+                    </div>
+                `;
                 return;
             }
 
-            appData.qadhaList.forEach(q => {
-                const isCompleted = q.status === 'completed';
-                const item = document.createElement('div');
-                item.className = `flex items-center justify-between p-3 rounded-2xl border ${isCompleted ? 'bg-emerald-50/50 border-emerald-200 opacity-80' : 'bg-white border-slate-200 shadow-sm'}`;
-                item.innerHTML = `
+            appData.qadhaList.forEach((q, idx) => {
+                const card = document.createElement('div');
+                card.className = `bg-white rounded-2xl p-3.5 border shadow-sm flex items-center justify-between ${q.status === 'completed' ? 'border-emerald-200 bg-emerald-50/40' : 'border-amber-200'}`;
+
+                card.innerHTML = `
                     <div class="flex items-center space-x-3">
-                        <div class="w-8 h-8 rounded-xl ${isCompleted ? 'bg-solat-600 text-white' : 'bg-rose-100 text-rose-600'} flex items-center justify-center text-xs font-bold shrink-0">
-                            <i class="fa-solid ${isCompleted ? 'fa-check' : 'fa-moon'}"></i>
+                        <div class="w-9 h-9 rounded-xl ${q.status === 'completed' ? 'bg-solat-600 text-white' : 'bg-amber-100 text-amber-800'} flex items-center justify-center text-sm font-bold shrink-0">
+                            <i class="fa-solid ${q.status === 'completed' ? 'fa-check' : 'fa-clock-rotate-left'}"></i>
                         </div>
                         <div>
-                            <h5 class="font-bold text-xs text-slate-800">${q.name} — <span class="text-slate-500 font-normal">${q.date}</span></h5>
-                            <span class="text-[10px] text-slate-500">${isCompleted ? `<span class="text-solat-700 font-semibold">Selesai Qadha pada ${q.completedOn}</span>` : '<span class="text-rose-600 font-semibold">Belum Diqadha</span>'}</span>
+                            <h4 class="font-bold text-xs text-slate-800">${q.name} <span class="text-[10px] font-semibold text-slate-400">(${q.date})</span></h4>
+                            <p class="text-[10px] ${q.status === 'completed' ? 'text-solat-700 font-bold' : 'text-amber-800'}">${q.status === 'completed' ? 'Telah Diqadha' : 'Tertunggak'}</p>
                         </div>
                     </div>
-                    ${isCompleted ? '<span class="text-xs font-bold text-solat-700 px-2.5 py-1 bg-emerald-100/80 rounded-lg">Selesai</span>' : `<button onclick="completeQadha('${q.id}')" class="bg-solat-600 hover:bg-solat-700 text-white text-xs font-bold px-3 py-1.5 rounded-xl shadow transition active:scale-95 shrink-0">Selesai Qadha</button>`}
+                    <button onclick="toggleQadhaStatus(${idx})" class="${q.status === 'completed' ? 'bg-emerald-100 text-solat-800' : 'bg-solat-600 text-white'} text-xs font-bold px-3 py-1.5 rounded-xl shadow transition active:scale-95">
+                        ${q.status === 'completed' ? 'Selesai' : 'Pelunaskan'}
+                    </button>
                 `;
-                container.appendChild(item);
+                container.appendChild(card);
             });
-            updateQadhaStats();
         }
 
-        function completeQadha(id) {
-            const q = appData.qadhaList.find(item => String(item.id) === String(id));
-            if (q) {
-                q.status = 'completed';
-                q.completedOn = getIslamicTodayString();
-                
-                updateDayHistoryRecord(q.date);
+        function toggleQadhaStatus(idx) {
+            const item = appData.qadhaList[idx];
+            if (item) {
+                item.status = item.status === 'completed' ? 'pending' : 'completed';
                 saveAppData();
                 renderFullQadhaList();
-                renderHistoryCalendar();
-                showToast(`Qadha ${q.name} berjaya diselesaikan!`);
+                showToast('Status Qadha diperbarui.');
             }
-        }
-
-        function updateQadhaStats() {
-            const total = appData.qadhaList.length;
-            const completed = appData.qadhaList.filter(q => q.status === 'completed').length;
-
-            const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
-            const pctEl = document.getElementById('qadha-percentage');
-            if (pctEl) pctEl.innerText = `${pct}% Selesai`;
-
-            const barEl = document.getElementById('qadha-progress-bar');
-            if (barEl) barEl.style.width = `${pct}%`;
-
-            let goldCount = 0;
-            let silverCount = 0;
-            let bronzeCount = 0;
-
-            const islamicToday = getIslamicTodayString();
-            Object.keys(appData.dailyRecords).forEach(d => {
-                if (d < islamicToday) {
-                    const badge = calculateDayStarBadge(d);
-                    if (badge.type === 'gold') goldCount++;
-                    if (badge.type === 'silver') silverCount++;
-                    if (badge.type === 'bronze') bronzeCount++;
-                }
-            });
-
-            const sg = document.getElementById('stat-gold');
-            const ss = document.getElementById('stat-silver');
-            const sb = document.getElementById('stat-bronze');
-
-            if (sg) sg.innerText = goldCount;
-            if (ss) ss.innerText = silverCount;
-            if (sb) sb.innerText = bronzeCount;
-        }
-
-        function switchTab(tabId) {
-            document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.add('hidden'));
-            document.getElementById('tab-' + tabId).classList.remove('hidden');
-
-            document.querySelectorAll('.nav-btn').forEach(btn => {
-                const isActive = btn.getAttribute('data-tab') === tabId;
-                if (isActive) {
-                    btn.classList.remove('text-slate-400');
-                    btn.classList.add('text-solat-700', 'font-bold');
-                } else {
-                    btn.classList.remove('text-solat-700', 'font-bold');
-                    btn.classList.add('text-slate-400');
-                }
-            });
-
-            if (tabId === 'history') {
-                renderHistoryCalendar();
-            }
-        }
-
-        function setupRealTimeDate() {
-            const now = new Date();
-            const options = { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' };
-            const dateString = now.toLocaleDateString('ms-MY', options);
-            document.getElementById('current-date-header').innerText = `Hari Ini: ${dateString}`;
-
-            setInterval(() => {
-                const d = new Date();
-                document.getElementById('live-time-display').innerText = d.toLocaleTimeString('ms-MY');
-                if (d.getSeconds() === 0) {
-                    checkRealtimePrayerStatus(false);
-                }
-            }, 1000);
         }
 
         function openAddQadhaModal() {
             document.getElementById('qadha-modal').classList.remove('hidden');
         }
+
         function closeAddQadhaModal() {
             document.getElementById('qadha-modal').classList.add('hidden');
         }
+
         function submitNewQadha() {
-            const prayerName = document.getElementById('modal-prayer-name').value;
-            const dateVal = document.getElementById('modal-qadha-date').value;
-            
-            const newQ = {
+            const name = document.getElementById('modal-prayer-name').value;
+            const date = document.getElementById('modal-qadha-date').value || getIslamicTodayString();
+
+            appData.qadhaList.unshift({
                 id: Date.now(),
-                prayerId: prayerName.toLowerCase(),
-                name: prayerName,
-                date: dateVal,
+                prayerId: name.toLowerCase(),
+                name: name,
+                date: date,
                 status: 'pending',
                 completedOn: null,
                 isAuto: false
-            };
+            });
 
-            appData.qadhaList.unshift(newQ);
-            updateDayHistoryRecord(dateVal);
             saveAppData();
             renderFullQadhaList();
-            renderHistoryCalendar();
             closeAddQadhaModal();
-            showToast('Solat Qadha manual berjaya ditambah');
+            showToast('Rekod Qadha ditambahkan.');
         }
 
-        function resetAllData() {
-            if (confirm('Adakah anda pasti mahu menetapkan semula semua data Solat & Qadha?')) {
-                localStorage.removeItem('solat_journal_v5_data');
-                const todayStr = getIslamicTodayString();
-                appData = {
-                    lastOpenDate: todayStr,
-                    dailyRecords: { [todayStr]: generateDefaultPrayers(todayStr) },
-                    qadhaList: [],
-                    history: []
-                };
-                selectedHomeDate = todayStr;
-                saveAppData();
-                renderPrayers();
-                renderFullQadhaList();
-                renderHistoryCalendar();
-                updateQadhaStats();
-                showToast('Semua data telah direset.');
+        function renderTimeSettings() {
+            const form = document.getElementById('settings-time-form');
+            if (!form) return;
+            form.innerHTML = '';
+
+            PRAYER_WINDOWS.forEach(p => {
+                const row = document.createElement('div');
+                row.className = 'flex items-center justify-between gap-2 bg-slate-50 p-2 rounded-xl border border-slate-100';
+                row.innerHTML = `
+                    <span class="font-bold text-slate-700 w-16">${p.name}</span>
+                    <div class="flex items-center gap-1">
+                        <input type="text" id="time-start-${p.id}" value="${p.start}" class="w-14 text-center bg-white border border-slate-200 rounded-lg py-1 font-semibold text-[11px] focus:outline-none focus:ring-1 focus:ring-solat-500">
+                        <span class="text-slate-400 font-bold">-</span>
+                        <input type="text" id="time-end-${p.id}" value="${p.end}" class="w-14 text-center bg-white border border-slate-200 rounded-lg py-1 font-semibold text-[11px] focus:outline-none focus:ring-1 focus:ring-solat-500">
+                    </div>
+                `;
+                form.appendChild(row);
+            });
+        }
+
+        function saveTimeSettings() {
+            PRAYER_WINDOWS.forEach(p => {
+                const startEl = document.getElementById(`time-start-${p.id}`);
+                const endEl = document.getElementById(`time-end-${p.id}`);
+                if (startEl && endEl) {
+                    p.start = startEl.value.trim();
+                    p.end = endEl.value.trim();
+                }
+            });
+
+            saveAppData();
+            renderPrayers();
+            showToast('Masa solat berjaya disimpan!');
+        }
+
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-pane').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('.nav-btn').forEach(el => {
+                el.classList.remove('text-solat-700');
+                el.classList.add('text-slate-400');
+            });
+
+            const targetTab = document.getElementById(`tab-${tabId}`);
+            if (targetTab) targetTab.classList.remove('hidden');
+
+            const activeBtn = document.querySelector(`.nav-btn[data-tab="${tabId}"]`);
+            if (activeBtn) {
+                activeBtn.classList.remove('text-slate-400');
+                activeBtn.classList.add('text-solat-700');
             }
+
+            if (tabId === 'history') renderHistoryCalendar();
+            if (tabId === 'missed') renderFullQadhaList();
+            if (tabId === 'settings') renderTimeSettings();
         }
 
         function showToast(msg) {
             const toast = document.getElementById('toast');
-            document.getElementById('toast-message').innerText = msg;
-            toast.classList.remove('opacity-0', 'pointer-events-none');
-            setTimeout(() => {
-                toast.classList.add('opacity-0', 'pointer-events-none');
-            }, 2500);
+            const msgEl = document.getElementById('toast-message');
+            if (toast && msgEl) {
+                msgEl.innerText = msg;
+                toast.classList.remove('opacity-0', 'pointer-events-none');
+                setTimeout(() => {
+                    toast.classList.add('opacity-0', 'pointer-events-none');
+                }, 2500);
+            }
         }
 
+        function resetAllData() {
+            if (confirm("Adakah anda pasti mahu memadam semua rekod?")) {
+                localStorage.removeItem('solat_journal_app_data');
+                appData = { dailyRecords: {}, qadhaList: [] };
+                saveAppData();
+                location.reload();
+            }
+        }
+
+        // PWA Setup
+        function setupPWA() {
+            window.addEventListener('beforeinstallprompt', (e) => {
+                e.preventDefault();
+                deferredPrompt = e;
+                const pwaBtn = document.getElementById('pwa-install-btn');
+                if (pwaBtn) pwaBtn.classList.remove('hidden');
+            });
+
+            const manifest = {
+                name: "Solat Journal PWA",
+                short_name: "SolatJournal",
+                start_url: "./",
+                display: "standalone",
+                background_color: "#061e17",
+                theme_color: "#064e3b",
+                icons: [
+                    {
+                        src: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cpath fill='%2310b981' d='M256 32L32 256h448L256 32z'/%3E%3C/svg%3E",
+                        sizes: "192x192",
+                        type: "image/svg+xml"
+                    }
+                ]
+            };
+
+            const stringManifest = JSON.stringify(manifest);
+            const blob = new Blob([stringManifest], {type: 'application/json'});
+            const manifestURL = URL.createObjectURL(blob);
+            document.getElementById('pwa-manifest-link').setAttribute('href', manifestURL);
+        }
+
+        function installPWA() {
+            if (deferredPrompt) {
+                deferredPrompt.prompt();
+                deferredPrompt.userChoice.then(() => {
+                    deferredPrompt = null;
+                });
+            } else {
+                document.getElementById('pwa-help-modal').classList.remove('hidden');
+            }
+        }
+
+        function closePWAHelpModal() {
+            document.getElementById('pwa-help-modal').classList.add('hidden');
+        }
+
+        // Bootstrapping App
         window.onload = function() {
-            setupPWA();
             loadAppData();
+            setupPWA();
             setupRealTimeDate();
-            checkRealtimePrayerStatus(false);
-            
-            const modalDate = document.getElementById('modal-qadha-date');
-            if (modalDate) modalDate.value = getIslamicTodayString();
+            checkRealtimePrayerStatus();
+            renderPrayers();
         };
     </script>
 </body>
